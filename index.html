@@ -733,12 +733,6 @@
   </svg>
 </div>
 
-<!-- === NEW: wrapper that stays hidden until auth passes — put ALL your
-     existing body content (toasts, modals, sys-frame, etc.) inside this === -->
-<div class="app-content" id="app-content" style="display:none;">
-
-  <!-- ... all your existing content goes here ... -->
-
 </div><!-- /app-content -->
 
 <!-- ═══ TOASTS & OVERLAYS ═══ -->
@@ -1322,6 +1316,7 @@ function render() {
     showToast(state.pendingPenaltyMsg);
     state.pendingPenaltyMsg = null;
     saveState();
+  }
 
   renderStatus();
   renderSkills();
@@ -1329,7 +1324,7 @@ function render() {
   renderInventory();
   renderDungeons();
   renderShadows();
-}
+
 
 function renderStatus() {
   const rank = RANKS[state.rankIdx];
@@ -1466,6 +1461,7 @@ function renderShadows() {
       </div>`;
     list.insertBefore(div, list.firstChild);
   });
+ }
 }
 
 // ═══════════════════════════════════════════════════════════
