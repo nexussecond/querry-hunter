@@ -1,0 +1,1612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SQL Hunter — Status Window</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/sql-wasm.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+
+  :root {
+    --bg: #050a0f;
+    --bg2: #080e15;
+    --bg3: #0c1520;
+    --cyan: #00e5ff;
+    --cyan-dim: #00a8c0;
+    --cyan-glow: rgba(0,229,255,0.15);
+    --purple: #b44fff;
+    --purple-dim: #7a2faa;
+    --purple-glow: rgba(180,79,255,0.15);
+    --magenta: #ff2d9f;
+    --gold: #ffd700;
+    --gold-dim: #b89b00;
+    --red: #ff3b3b;
+    --green: #00ff88;
+    --text: #c8e8f0;
+    --text-dim: #6a8fa0;
+    --border: rgba(0,229,255,0.25);
+    --border-strong: rgba(0,229,255,0.6);
+    --panel: rgba(8,20,32,0.95);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Rajdhani', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+    background-image:
+      radial-gradient(ellipse at 20% 20%, rgba(0,229,255,0.04) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 80%, rgba(180,79,255,0.04) 0%, transparent 50%),
+      repeating-linear-gradient(0deg, transparent, transparent 40px, rgba(0,229,255,0.015) 40px, rgba(0,229,255,0.015) 41px),
+      repeating-linear-gradient(90deg, transparent, transparent 40px, rgba(0,229,255,0.015) 40px, rgba(0,229,255,0.015) 41px);
+  }
+
+  /* ═══ CORNER ORNAMENTS ═══ */
+  .sys-frame {
+    position: relative;
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 12px;
+  }
+  .sys-frame::before, .sys-frame::after,
+  .sys-frame .corner-br, .sys-frame .corner-bl {
+    content: '';
+    position: absolute;
+    width: 40px; height: 40px;
+    z-index: 10;
+  }
+  .sys-frame::before { top:8px; left:8px; border-top: 2px solid var(--cyan); border-left: 2px solid var(--cyan); }
+  .sys-frame::after { top:8px; right:8px; border-top: 2px solid var(--cyan); border-right: 2px solid var(--cyan); }
+  .sys-frame .corner-br { bottom:8px; right:8px; border-bottom: 2px solid var(--cyan); border-right: 2px solid var(--cyan); }
+  .sys-frame .corner-bl { bottom:8px; left:8px; border-bottom: 2px solid var(--cyan); border-left: 2px solid var(--cyan); }
+
+  /* ═══ HEADER ═══ */
+  .sys-header {
+    text-align: center;
+    padding: 24px 0 16px;
+    position: relative;
+  }
+  .sys-header .sys-tag {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    color: var(--cyan);
+    letter-spacing: 4px;
+    text-shadow: 0 0 12px var(--cyan);
+    margin-bottom: 6px;
+  }
+  .sys-header h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(22px, 3.5vw, 38px);
+    font-weight: 900;
+    color: #fff;
+    text-shadow: 0 0 30px var(--cyan), 0 0 60px rgba(0,229,255,0.3);
+    letter-spacing: 2px;
+  }
+  .header-line {
+    width: 100%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--cyan), var(--purple), transparent);
+    margin-top: 12px;
+    box-shadow: 0 0 8px var(--cyan);
+  }
+
+  /* ═══ GRID LAYOUT ═══ */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 280px 1fr 200px;
+    grid-template-rows: auto auto;
+    gap: 10px;
+    padding: 10px 0;
+  }
+  @media (max-width: 900px) {
+    .main-grid { grid-template-columns: 1fr; }
+  }
+
+  /* ═══ PANEL BASE ═══ */
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    position: relative;
+    padding: 12px;
+    clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+  }
+  .panel::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, var(--cyan-glow) 0%, transparent 40%);
+    pointer-events: none;
+  }
+  .panel-label {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    color: var(--cyan);
+    letter-spacing: 2px;
+    text-shadow: 0 0 8px var(--cyan);
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 6px;
+  }
+
+  /* ═══ STATUS CENTER ═══ */
+  .status-center {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .rank-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 12px;
+  }
+  .rank-emblem {
+    position: relative;
+    width: 80px;
+    height: 80px;
+    flex-shrink: 0;
+  }
+  .rank-emblem svg { width: 100%; height: 100%; }
+  .rank-letter {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 32px;
+    font-weight: 900;
+    color: var(--cyan);
+    text-shadow: 0 0 20px var(--cyan), 0 0 40px var(--cyan);
+    z-index: 2;
+  }
+  .status-info { flex: 1; }
+  .hunter-name {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 13px;
+    color: var(--cyan-dim);
+    letter-spacing: 2px;
+    margin-bottom: 4px;
+  }
+  .level-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .level-num {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 22px;
+    font-weight: 700;
+    color: #fff;
+    text-shadow: 0 0 15px var(--cyan);
+  }
+  .xp-bar-wrap { flex: 1; }
+  .xp-label { font-size: 11px; color: var(--text-dim); margin-bottom: 3px; }
+  .xp-blocks {
+    display: flex;
+    gap: 2px;
+  }
+  .xp-block {
+    height: 12px;
+    flex: 1;
+    background: rgba(0,229,255,0.1);
+    border: 1px solid rgba(0,229,255,0.2);
+    transition: background 0.3s;
+  }
+  .xp-block.filled {
+    background: var(--cyan);
+    box-shadow: 0 0 6px var(--cyan);
+  }
+
+  .stats-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .stat-box {
+    background: rgba(0,229,255,0.05);
+    border: 1px solid var(--border);
+    padding: 8px;
+    text-align: center;
+    clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 6px 100%, 0 calc(100% - 6px));
+  }
+  .stat-icon { font-size: 18px; margin-bottom: 2px; }
+  .stat-name { font-size: 10px; color: var(--text-dim); letter-spacing: 1px; }
+  .stat-value {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 20px;
+    color: var(--cyan);
+    text-shadow: 0 0 10px var(--cyan);
+  }
+  .stat-value.gold { color: var(--gold); text-shadow: 0 0 10px var(--gold); }
+
+  .gate-btn {
+    width: 100%;
+    margin-top: 10px;
+    background: linear-gradient(90deg, rgba(180,79,255,0.1), rgba(0,229,255,0.1));
+    border: 1px solid var(--purple);
+    color: var(--purple);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    letter-spacing: 2px;
+    padding: 10px;
+    cursor: pointer;
+    clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+    transition: all 0.2s;
+    text-shadow: 0 0 8px var(--purple);
+    box-shadow: inset 0 0 20px rgba(180,79,255,0.05);
+  }
+  .gate-btn:hover:not(:disabled) {
+    background: linear-gradient(90deg, rgba(180,79,255,0.2), rgba(0,229,255,0.2));
+    box-shadow: 0 0 20px rgba(180,79,255,0.3), inset 0 0 20px rgba(180,79,255,0.1);
+  }
+  .gate-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .gate-hint { font-size: 10px; color: var(--text-dim); text-align: center; margin-top: 4px; }
+
+  /* ═══ SKILLS PANEL ═══ */
+  .skills-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .skill-card {
+    background: rgba(0,20,40,0.8);
+    border: 1px solid rgba(0,229,255,0.2);
+    padding: 8px 6px;
+    text-align: center;
+    clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 0 100%);
+    transition: all 0.2s;
+  }
+  .skill-card.unlocked { border-color: rgba(0,229,255,0.5); background: rgba(0,229,255,0.05); }
+  .skill-card.locked { opacity: 0.45; filter: grayscale(0.5); }
+  .skill-icon { font-size: 22px; margin-bottom: 2px; }
+  .skill-name { font-size: 9px; color: var(--text-dim); line-height: 1.2; }
+  .skill-level { font-family: 'Orbitron', sans-serif; font-size: 9px; color: var(--cyan); margin-top: 2px; }
+  .skill-level.locked { color: var(--text-dim); }
+
+  /* ═══ SHADOWS PANEL ═══ */
+  .shadows-panel {
+    grid-column: 3;
+    grid-row: 1 / 3;
+    background: linear-gradient(180deg, rgba(60,0,100,0.3) 0%, var(--panel) 30%);
+    border-color: rgba(180,79,255,0.4);
+  }
+  .shadows-panel .panel-label { color: var(--purple); text-shadow: 0 0 8px var(--purple); border-color: rgba(180,79,255,0.3); }
+  .shadow-army-count { font-size: 11px; color: var(--text-dim); margin-bottom: 8px; }
+  .shadow-list { display: flex; flex-direction: column; gap: 8px; }
+  .shadow-card {
+    background: rgba(30,0,60,0.6);
+    border: 1px solid rgba(180,79,255,0.3);
+    padding: 8px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 0 100%);
+  }
+  .shadow-silhouette { font-size: 28px; filter: brightness(0) invert(0.1); opacity: 0.85; }
+  .shadow-info { flex: 1; }
+  .shadow-name { font-size: 11px; color: var(--purple); font-weight: 600; }
+  .shadow-rarity { font-size: 9px; color: var(--text-dim); }
+  .rarity-Common { color: #aaa; }
+  .rarity-Uncommon { color: #4af; }
+  .rarity-Rare { color: #a4f; }
+  .rarity-Epic { color: var(--magenta); }
+  .rarity-Legendary { color: var(--gold); }
+
+  .extract-btn {
+    width: 100%;
+    margin-top: 8px;
+    background: rgba(180,79,255,0.1);
+    border: 1px solid rgba(180,79,255,0.4);
+    color: var(--purple);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 9px;
+    letter-spacing: 1px;
+    padding: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .extract-btn:hover:not(:disabled) { background: rgba(180,79,255,0.2); box-shadow: 0 0 12px rgba(180,79,255,0.3); }
+  .extract-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .shadow-empty { font-size: 11px; color: var(--text-dim); text-align: center; padding: 16px 0; font-style: italic; }
+
+  /* ═══ INVENTORY ═══ */
+  .inventory-panel { grid-column: 2; grid-row: 2; }
+  .inv-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .inv-slot {
+    background: rgba(0,20,40,0.6);
+    border: 1px solid rgba(0,229,255,0.2);
+    aspect-ratio: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+  }
+  .inv-slot.filled { border-color: rgba(0,229,255,0.5); background: rgba(0,229,255,0.07); }
+  .inv-icon { font-size: 24px; }
+  .inv-label { font-size: 9px; color: var(--text-dim); text-align: center; }
+
+  /* ═══ DAILY QUEST ═══ */
+  .daily-panel {
+    grid-column: 1;
+    grid-row: 1 / 3;
+    background: linear-gradient(180deg, rgba(0,15,25,0.95), rgba(0,10,20,0.95));
+    border-image: none;
+    position: relative;
+    overflow: hidden;
+  }
+  .daily-panel::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      repeating-linear-gradient(0deg, transparent, transparent 30px, rgba(0,229,255,0.02) 30px, rgba(0,229,255,0.02) 31px);
+    pointer-events: none;
+  }
+  .quest-list { display: flex; flex-direction: column; gap: 6px; }
+  .quest-item {
+    background: rgba(0,229,255,0.04);
+    border: 1px solid var(--border);
+    padding: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
+  }
+  .quest-item:hover { background: rgba(0,229,255,0.08); border-color: var(--cyan-dim); }
+  .quest-item.active { border-color: var(--cyan); box-shadow: 0 0 12px rgba(0,229,255,0.2); }
+  .quest-item.completed { border-color: var(--green); opacity: 0.7; }
+  .quest-header { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+  .quest-check {
+    width: 14px; height: 14px;
+    border: 1px solid var(--text-dim);
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .quest-check.done { border-color: var(--green); background: var(--green); color: #000; font-size: 9px; }
+  .quest-name { font-size: 13px; font-weight: 600; color: #e0f4ff; flex: 1; }
+  .quest-rank { font-size: 9px; color: var(--cyan-dim); background: rgba(0,229,255,0.1); padding: 1px 5px; border: 1px solid rgba(0,229,255,0.3); }
+  .quest-meta { display: flex; justify-content: space-between; align-items: center; }
+  .quest-xp { font-family: 'Orbitron', sans-serif; font-size: 10px; color: var(--gold); }
+  .quest-timer { font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--text-dim); }
+  .quest-timer.warning { color: var(--red); animation: blink 1s infinite; }
+
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  .streak-warn {
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--red);
+    text-align: center;
+    padding: 6px;
+    border: 1px solid rgba(255,59,59,0.3);
+    background: rgba(255,59,59,0.05);
+  }
+
+  /* ═══ QUEST MODAL ═══ */
+  .quest-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.85);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .quest-modal.open { display: flex; }
+  .modal-box {
+    background: var(--bg2);
+    border: 1px solid var(--border-strong);
+    width: 100%;
+    max-width: 700px;
+    max-height: 90vh;
+    overflow-y: auto;
+    clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px));
+    box-shadow: 0 0 60px rgba(0,229,255,0.2), 0 0 120px rgba(0,229,255,0.05);
+  }
+  .modal-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .modal-title { font-family: 'Orbitron', sans-serif; font-size: 14px; color: var(--cyan); flex: 1; }
+  .modal-timer { font-family: 'Share Tech Mono', monospace; font-size: 16px; color: var(--gold); }
+  .modal-timer.warning { color: var(--red); animation: blink 0.8s infinite; }
+  .modal-close {
+    background: none; border: 1px solid var(--border); color: var(--text-dim);
+    width: 28px; height: 28px; cursor: pointer; font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s;
+  }
+  .modal-close:hover { border-color: var(--red); color: var(--red); }
+
+  .modal-body { padding: 20px; }
+  .quest-desc { font-size: 14px; color: var(--text); margin-bottom: 16px; line-height: 1.6; }
+  .schema-section { margin-bottom: 16px; }
+  .schema-label { font-size: 11px; color: var(--cyan-dim); letter-spacing: 2px; margin-bottom: 6px; }
+  .schema-box {
+    background: rgba(0,229,255,0.03);
+    border: 1px solid rgba(0,229,255,0.15);
+    padding: 10px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+  .sql-editor {
+    width: 100%;
+    background: rgba(0,5,10,0.9);
+    border: 1px solid var(--border);
+    color: var(--cyan);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    padding: 12px;
+    resize: vertical;
+    min-height: 100px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .sql-editor:focus { border-color: var(--cyan); box-shadow: 0 0 15px rgba(0,229,255,0.1); }
+  .run-btn {
+    width: 100%;
+    margin-top: 8px;
+    background: rgba(0,229,255,0.1);
+    border: 1px solid var(--cyan);
+    color: var(--cyan);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 12px;
+    letter-spacing: 2px;
+    padding: 12px;
+    cursor: pointer;
+    clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+    transition: all 0.2s;
+  }
+  .run-btn:hover { background: rgba(0,229,255,0.2); box-shadow: 0 0 20px rgba(0,229,255,0.3); }
+  .result-box {
+    margin-top: 12px;
+    border: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .result-success { border-color: var(--green); background: rgba(0,255,136,0.05); }
+  .result-error { border-color: var(--red); background: rgba(255,59,59,0.05); }
+  .result-header { padding: 8px 12px; border-bottom: 1px solid inherit; font-family: 'Orbitron', sans-serif; font-size: 10px; letter-spacing: 1px; }
+  .result-table { width: 100%; border-collapse: collapse; font-family: 'Share Tech Mono', monospace; font-size: 11px; }
+  .result-table th { background: rgba(0,229,255,0.08); color: var(--cyan-dim); padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+  .result-table td { padding: 5px 10px; border-bottom: 1px solid rgba(0,229,255,0.08); color: var(--text); }
+  .result-table tr:last-child td { border-bottom: none; }
+  .result-msg { padding: 10px 12px; }
+
+  /* ═══ XP REWARD TOAST ═══ */
+  .xp-toast {
+    position: fixed;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-20px);
+    background: rgba(0,10,20,0.95);
+    border: 1px solid var(--gold);
+    padding: 12px 24px;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 14px;
+    color: var(--gold);
+    text-shadow: 0 0 15px var(--gold);
+    box-shadow: 0 0 40px rgba(255,215,0,0.3);
+    opacity: 0;
+    transition: all 0.4s;
+    z-index: 2000;
+    clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+    pointer-events: none;
+  }
+  .xp-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ═══ DUNGEONS SECTION ═══ */
+  .dungeons-section {
+    margin-top: 10px;
+    padding: 0 0 20px;
+  }
+  .dungeons-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 14px;
+    color: #fff;
+    letter-spacing: 3px;
+    text-shadow: 0 0 15px var(--cyan);
+    margin-bottom: 16px;
+    padding: 0 4px;
+  }
+  .dungeon-map {
+    position: relative;
+    width: 100%;
+    overflow-x: auto;
+    padding: 20px 0;
+  }
+  .dungeon-nodes {
+    display: flex;
+    gap: 0;
+    justify-content: space-around;
+    position: relative;
+    min-width: 600px;
+  }
+  .dungeon-nodes::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 10%;
+    right: 10%;
+    height: 1px;
+    background: linear-gradient(90deg, var(--cyan-dim), var(--purple-dim));
+    opacity: 0.4;
+    transform: translateY(-50%);
+  }
+  .dungeon-node {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    position: relative;
+    z-index: 1;
+    width: 120px;
+  }
+  .node-circle {
+    width: 64px; height: 64px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    background: var(--bg3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s;
+    position: relative;
+  }
+  .node-circle.active {
+    border-color: var(--cyan);
+    background: rgba(0,229,255,0.1);
+    box-shadow: 0 0 20px rgba(0,229,255,0.4), inset 0 0 20px rgba(0,229,255,0.1);
+    color: var(--cyan);
+    animation: pulse-node 2s infinite;
+  }
+  .node-circle.completed { border-color: var(--green); color: var(--green); box-shadow: 0 0 15px rgba(0,255,136,0.3); }
+  .node-circle.locked { border-color: rgba(100,100,100,0.3); color: rgba(100,100,100,0.5); cursor: not-allowed; }
+  @keyframes pulse-node { 0%,100%{box-shadow:0 0 20px rgba(0,229,255,0.4), inset 0 0 20px rgba(0,229,255,0.1)} 50%{box-shadow:0 0 35px rgba(0,229,255,0.6), inset 0 0 30px rgba(0,229,255,0.15)} }
+  .lock-icon { position: absolute; top:-4px; right:-4px; background: var(--bg); border: 1px solid rgba(100,100,100,0.3); border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; font-size: 9px; }
+  .node-info { text-align: center; }
+  .node-rank { font-family: 'Orbitron', sans-serif; font-size: 11px; color: var(--text-dim); }
+  .node-name { font-size: 12px; color: var(--text); margin-top: 2px; }
+  .node-status { font-size: 10px; color: var(--text-dim); font-style: italic; }
+  .node-loot { display: flex; gap: 4px; justify-content: center; margin-top: 2px; }
+  .loot-icon { font-size: 14px; opacity: 0.6; }
+
+  /* ═══ RANK UP OVERLAY ═══ */
+  .rank-up-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.9);
+    z-index: 3000;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .rank-up-overlay.show { display: flex; }
+  .rank-up-title { font-family: 'Orbitron', sans-serif; font-size: 12px; color: var(--cyan); letter-spacing: 4px; }
+  .rank-up-letter { font-family: 'Orbitron', sans-serif; font-size: 80px; font-weight: 900; color: var(--gold); text-shadow: 0 0 60px var(--gold), 0 0 120px rgba(255,215,0,0.5); animation: rank-pulse 0.5s ease-out; }
+  @keyframes rank-pulse { 0%{transform:scale(0.5);opacity:0} 100%{transform:scale(1);opacity:1} }
+  .rank-up-sub { font-size: 14px; color: var(--text-dim); }
+  .rank-up-close { background: none; border: 1px solid var(--gold); color: var(--gold); font-family: 'Orbitron', sans-serif; font-size: 12px; letter-spacing: 2px; padding: 10px 30px; cursor: pointer; margin-top: 10px; transition: all 0.2s; }
+  .rank-up-close:hover { background: rgba(255,215,0,0.1); box-shadow: 0 0 20px rgba(255,215,0,0.3); }
+
+  /* ═══ RESET BTN ═══ */
+  .footer-bar { display: flex; justify-content: flex-end; padding: 10px 4px; gap: 8px; }
+  .footer-btn {
+    background: rgba(0,0,0,0.5);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 9px;
+    letter-spacing: 1px;
+    padding: 6px 12px;
+    cursor: pointer;
+    clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 0 100%);
+    transition: all 0.2s;
+  }
+  .footer-btn:hover { border-color: var(--cyan-dim); color: var(--cyan); }
+  .footer-btn.danger:hover { border-color: var(--red); color: var(--red); }
+
+  /* ═══ SCAN LINES ═══ */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* ═══ HELP MODAL ═══ */
+  .help-content { padding: 20px; }
+  .help-section { margin-bottom: 16px; }
+  .help-section h3 { font-family: 'Orbitron', sans-serif; font-size: 12px; color: var(--cyan); margin-bottom: 8px; letter-spacing: 1px; }
+  .help-section p, .help-section li { font-size: 13px; color: var(--text-dim); line-height: 1.7; }
+  .help-section ul { padding-left: 16px; }
+  .help-section li { margin-bottom: 4px; }
+  .help-badge { display: inline-block; font-family: 'Orbitron', sans-serif; font-size: 10px; color: var(--gold); background: rgba(255,215,0,0.1); border: 1px solid rgba(255,215,0,0.3); padding: 1px 6px; margin: 0 2px; }
+
+  /* ═══ SCROLLBAR ═══ */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--cyan-dim); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<!-- ═══ TOASTS & OVERLAYS ═══ -->
+<div class="xp-toast" id="xp-toast"></div>
+
+<div class="rank-up-overlay" id="rank-up-overlay">
+  <div class="rank-up-title">[ RANK UP — SYSTEM ALERT ]</div>
+  <div class="rank-up-letter" id="rank-up-letter">A</div>
+  <div class="rank-up-sub" id="rank-up-sub">Hunter rank has increased</div>
+  <button class="rank-up-close" onclick="document.getElementById('rank-up-overlay').classList.remove('show')">[ ACKNOWLEDGE ]</button>
+</div>
+
+<!-- ═══ QUEST MODAL ═══ -->
+<div class="quest-modal" id="quest-modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-title">QUEST: —</span>
+      <span class="modal-timer" id="modal-timer-display">—</span>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="quest-desc" id="modal-desc"></div>
+      <div class="schema-section">
+        <div class="schema-label">[ DATABASE SCHEMA ]</div>
+        <div class="schema-box" id="modal-schema"></div>
+      </div>
+      <div class="schema-label" style="margin-bottom:6px;">[ YOUR QUERY ]</div>
+      <textarea class="sql-editor" id="sql-input" placeholder="SELECT ..." rows="5" spellcheck="false"></textarea>
+      <button class="run-btn" onclick="runQuery()">[ EXECUTE QUERY ]</button>
+      <div id="result-area"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ HELP MODAL ═══ -->
+<div class="quest-modal" id="help-modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">[ SYSTEM GUIDE ]</span>
+      <button class="modal-close" onclick="document.getElementById('help-modal').classList.remove('open')">✕</button>
+    </div>
+    <div class="help-content">
+      <div class="help-section">
+        <h3>HOW TO HUNT</h3>
+        <ul>
+          <li>Complete <strong>3 Daily Quests</strong> each day to keep your streak alive.</li>
+          <li>Each quest checks your SQL answer against the correct result — not just keywords.</li>
+          <li>Solve within the time limit for <span class="help-badge">FULL XP</span>, after for <span class="help-badge">HALF XP</span>.</li>
+          <li>Every 180 XP = 1 Level. Rank gates need XP <em>and</em> days in the System.</li>
+        </ul>
+      </div>
+      <div class="help-section">
+        <h3>GATE KEYS</h3>
+        <ul>
+          <li>Completing all 3 daily quests awards 1 <span class="help-badge">GATE KEY</span>.</li>
+          <li>Spend a key to open a random Gate — a quest from any rank with 1.5× XP reward but tighter timer.</li>
+        </ul>
+      </div>
+      <div class="help-section">
+        <h3>SHADOWS & MONSTERS</h3>
+        <ul>
+          <li>Clearing quests has a chance to extract a <em>Shadow</em> into your army.</li>
+          <li>Harder quests yield rarer shadows (Common → Uncommon → Rare → Epic → Legendary).</li>
+        </ul>
+      </div>
+      <div class="help-section">
+        <h3>DUNGEON RANKS</h3>
+        <ul>
+          <li><span class="help-badge">E</span> Filtering Grounds — WHERE, ORDER BY, LIMIT</li>
+          <li><span class="help-badge">D</span> Joins & Relations — JOIN, UNION, foreign keys</li>
+          <li><span class="help-badge">C</span> Aggregation Depths — GROUP BY, HAVING, COUNT/SUM</li>
+          <li><span class="help-badge">B</span> Subquery Labyrinth — nested queries, EXISTS, IN</li>
+          <li><span class="help-badge">A</span> Window Function Vault — OVER, PARTITION, RANK</li>
+          <li><span class="help-badge">S</span> Optimization Sanctum — indexes, EXPLAIN, CTEs</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MAIN ═══ -->
+<div class="sys-frame">
+  <div class="corner-br"></div><div class="corner-bl"></div>
+
+  <!-- HEADER -->
+  <div class="sys-header">
+    <div class="sys-tag">[ SYSTEM ONLINE ]</div>
+    <h1>SQL HUNTER — STATUS WINDOW</h1>
+    <div class="header-line"></div>
+  </div>
+
+  <!-- MAIN GRID -->
+  <div class="main-grid">
+
+    <!-- ══ DAILY QUESTS (LEFT) ══ -->
+    <div class="panel daily-panel">
+      <div class="panel-label">[ DAILY QUEST ] <span style="font-size:9px;color:var(--text-dim);letter-spacing:0;font-family:'Rajdhani',sans-serif;font-weight:400;">resets at midnight</span></div>
+      <div class="quest-list" id="quest-list">
+        <!-- filled by JS -->
+      </div>
+      <div class="streak-warn" id="streak-warn" style="display:none;">
+        ⚠ Complete today's quests to keep your streak alive.
+      </div>
+
+      <!-- SKILLS BELOW QUESTS -->
+      <div class="panel-label" style="margin-top:16px;">[ SKILLS &amp; ABILITIES ]</div>
+      <div class="hunter-name" id="hunter-name-skills" style="font-size:11px;margin-bottom:8px;">'query_hunter'</div>
+      <div class="skills-grid" id="skills-grid">
+        <!-- filled by JS -->
+      </div>
+    </div>
+
+    <!-- ══ STATUS CENTER ══ -->
+    <div class="panel status-center">
+      <div class="rank-row">
+        <div class="rank-emblem">
+          <svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <filter id="glow">
+                <feGaussianBlur stdDeviation="3" result="blur"/>
+                <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+            </defs>
+            <polygon points="40,4 72,22 72,58 40,76 8,58 8,22" fill="none" stroke="rgba(0,229,255,0.3)" stroke-width="1.5"/>
+            <polygon points="40,10 66,25 66,55 40,70 14,55 14,25" fill="rgba(0,229,255,0.05)" stroke="rgba(0,229,255,0.6)" stroke-width="1" filter="url(#glow)"/>
+            <line x1="40" y1="4" x2="40" y2="10" stroke="rgba(0,229,255,0.8)" stroke-width="2"/>
+            <line x1="40" y1="76" x2="40" y2="70" stroke="rgba(0,229,255,0.8)" stroke-width="2"/>
+            <line x1="72" y1="22" x2="66" y2="25" stroke="rgba(0,229,255,0.8)" stroke-width="2"/>
+            <line x1="72" y1="58" x2="66" y2="55" stroke="rgba(0,229,255,0.8)" stroke-width="2"/>
+            <line x1="8" y1="22" x2="14" y2="25" stroke="rgba(0,229,255,0.8)" stroke-width="2"/>
+            <line x1="8" y1="58" x2="14" y2="55" stroke="rgba(0,229,255,0.8)" stroke-width="2"/>
+          </svg>
+          <div class="rank-letter" id="rank-letter">E</div>
+        </div>
+        <div class="status-info">
+          <div class="hunter-name">RANK <span id="rank-name-display">E — Awakened</span></div>
+          <div class="level-row">
+            <span class="level-num">Lv <span id="level-display">1</span></span>
+            <div class="xp-bar-wrap">
+              <div class="xp-label"><span id="xp-display">0</span> / 180 XP</div>
+              <div class="xp-blocks" id="xp-blocks"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-box">
+          <div class="stat-icon">🔥</div>
+          <div class="stat-name">STREAK</div>
+          <div class="stat-value" id="streak-display">0d</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-icon">⚡</div>
+          <div class="stat-name">DAYS IN SYSTEM</div>
+          <div class="stat-value" id="days-display">1</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-icon">🗝️</div>
+          <div class="stat-name">GATE KEYS</div>
+          <div class="stat-value gold" id="keys-display">0</div>
+        </div>
+      </div>
+
+      <button class="gate-btn" id="gate-btn" onclick="openGate()">[ OPEN A RANDOM GATE (uses 1 key) ]</button>
+      <div class="gate-hint">Spend a key to gamble on a quest of random rank for bonus XP, on a tighter timer.</div>
+    </div>
+
+    <!-- ══ SHADOWS PANEL (RIGHT) ══ -->
+    <div class="panel shadows-panel">
+      <div class="panel-label">[ SHADOWS &amp; MONSTERS ]</div>
+      <div class="shadow-army-count">[ Shadow Army: <span id="shadow-count">0</span> ]</div>
+      <div class="shadow-list" id="shadow-list">
+        <div class="shadow-empty" id="shadow-empty">No shadows extracted yet.<br><br>Complete quests to extract shadow soldiers.</div>
+      </div>
+      <button class="extract-btn" id="extract-btn" onclick="extractSoul()" disabled>[ Extract Soul (uses 1 key) ]</button>
+    </div>
+
+    <!-- ══ INVENTORY (CENTER BOTTOM) ══ -->
+    <div class="panel inventory-panel">
+      <div class="panel-label">[ INVENTORY &amp; EQUIPMENT ]</div>
+      <div class="inv-grid" id="inv-grid">
+        <!-- filled by JS -->
+      </div>
+    </div>
+
+  </div><!-- end main-grid -->
+
+  <!-- DUNGEONS -->
+  <div class="dungeons-section">
+    <div class="panel-label" style="font-family:'Orbitron',sans-serif;font-size:13px;color:#fff;letter-spacing:3px;text-shadow:0 0 15px var(--cyan);padding:0 4px;margin-bottom:8px;">DUNGEONS</div>
+    <div class="panel">
+      <div class="dungeon-map">
+        <div class="dungeon-nodes" id="dungeon-nodes"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer-bar">
+    <button class="footer-btn" onclick="document.getElementById('help-modal').classList.add('open')">[ ? HELP ]</button>
+    <button class="footer-btn danger" onclick="confirmReset()">[ reset progress ]</button>
+  </div>
+
+</div><!-- end sys-frame -->
+
+<script>
+// ═══════════════════════════════════════════════════════════
+// GAME DATA
+// ═══════════════════════════════════════════════════════════
+
+const RANKS = ['E','D','C','B','A','S'];
+const RANK_NAMES = { E:'Awakened', D:'Apprentice', C:'Challenger', B:'Expert', A:'Master', S:'Monarch' };
+const RANK_DAY_GATES = { E:0, D:3, C:7, B:14, A:21, S:28 };
+const RANK_XP_GATES = { E:0, D:360, C:900, B:1800, A:3240, S:5400 };
+
+const SKILLS = [
+  { id:'dqs', name:'Data Query\nStrike', icon:'⚔️', minRank:0 },
+  { id:'wfs', name:'Window Fn\nShield', icon:'🛡️', minRank:4 },
+  { id:'ip',  name:'Index\nPrecision', icon:'📜', minRank:3 },
+  { id:'os',  name:'Optimization\nSurge', icon:'🌀', minRank:5 },
+  { id:'sb',  name:'Subquery\nBlink', icon:'👁️', minRank:3 },
+  { id:'ac',  name:'Aggregation\nCloak', icon:'🌑', minRank:2 },
+];
+
+const INVENTORY_SLOTS = [
+  { id:'weapon', label:'Current Weapon', icon:'🗡️', minStreak:0 },
+  { id:'armor',  label:'Armor', icon:'🧥', minStreak:5 },
+  { id:'acc',    label:'Accessory', icon:'💍', minStreak:10 },
+  { id:'bag',    label:'Bag (Lv 1)', icon:'🎒', minStreak:0 },
+];
+
+const DUNGEONS = [
+  { rank:'E', name:'Filtering Grounds',    themes:['Data Imp'],        icon:'🦇', loot:['🔵','💊'] },
+  { rank:'D', name:'Joins & Relations',    themes:['Join Golem'],      icon:'🗿', loot:['⚗️','📦'] },
+  { rank:'C', name:'Aggregation Depths',   themes:['Count Wraith'],    icon:'👻', loot:['💎','🧪'] },
+  { rank:'B', name:'Subquery Labyrinth',   themes:['Nest Crawler'],    icon:'🕷️', loot:['🔮','⚡'] },
+  { rank:'A', name:'Window Fn Vault',      themes:['Frame Phantom'],   icon:'👁️', loot:['🌀','👑'] },
+  { rank:'S', name:'Optimization Sanctum', themes:['Index Specter'],   icon:'💀', loot:['✨','🏆'] },
+];
+
+const SHADOW_POOL = [
+  { name:'Data Imp Shadow',    icon:'👺', rarity:'Common',    rankIdx:0 },
+  { name:'Query Sprite Shadow',icon:'🧚', rarity:'Common',    rankIdx:0 },
+  { name:'Null Gremlin',       icon:'👾', rarity:'Common',    rankIdx:0 },
+  { name:'Join Golem Shadow',  icon:'🗿', rarity:'Uncommon',  rankIdx:1 },
+  { name:'Foreign Key Wraith', icon:'⛓️', rarity:'Uncommon',  rankIdx:1 },
+  { name:'Count Specter',      icon:'👻', rarity:'Rare',      rankIdx:2 },
+  { name:'Aggregate Shade',    icon:'🌑', rarity:'Rare',      rankIdx:2 },
+  { name:'Nest Crawler',       icon:'🕷️', rarity:'Epic',      rankIdx:3 },
+  { name:'Subquery Viper',     icon:'🐍', rarity:'Epic',      rankIdx:3 },
+  { name:'Window Phantom',     icon:'👁️', rarity:'Epic',      rankIdx:4 },
+  { name:'Index Monarch',      icon:'💎', rarity:'Legendary', rankIdx:5 },
+  { name:'The Optimizer',      icon:'⚡', rarity:'Legendary', rankIdx:5 },
+];
+
+// ═══ QUEST BANK ═══
+const QUESTS = [
+  // E-RANK
+  {
+    id:'e1', rank:'E', rankIdx:0, name:'Name Patterns', xp:40, time:300,
+    desc:'The archive holds countless employee records. Your task: retrieve employees whose names start with the letter "A".',
+    schema:`employees (id, name, department, salary, hire_date)`,
+    setup:`CREATE TABLE employees (id INTEGER PRIMARY KEY, name TEXT, department TEXT, salary INTEGER, hire_date TEXT);
+INSERT INTO employees VALUES (1,'Alice Wong','Engineering',90000,'2020-01-15'),(2,'Bob Smith','Marketing',65000,'2019-03-10'),(3,'Anna Lee','Engineering',85000,'2021-07-01'),(4,'Charlie Kim','HR',70000,'2018-11-20'),(5,'Amy Johnson','Marketing',72000,'2022-02-28');`,
+    solution:`SELECT * FROM employees WHERE name LIKE 'A%';`,
+  },
+  {
+    id:'e2', rank:'E', rankIdx:0, name:'Top Earners', xp:40, time:300,
+    desc:'The kingdom needs its richest hunters. Find the top 3 highest-paid employees.',
+    schema:`employees (id, name, department, salary, hire_date)`,
+    setup:`CREATE TABLE employees (id INTEGER PRIMARY KEY, name TEXT, department TEXT, salary INTEGER, hire_date TEXT);
+INSERT INTO employees VALUES (1,'Alice Wong','Engineering',90000,'2020-01-15'),(2,'Bob Smith','Marketing',65000,'2019-03-10'),(3,'Anna Lee','Engineering',85000,'2021-07-01'),(4,'Charlie Kim','HR',70000,'2018-11-20'),(5,'Amy Johnson','Marketing',72000,'2022-02-28');`,
+    solution:`SELECT * FROM employees ORDER BY salary DESC LIMIT 3;`,
+  },
+  {
+    id:'e3', rank:'E', rankIdx:0, name:'Missing Department', xp:40, time:300,
+    desc:'Some hunters are lost without a department. Retrieve all employees NOT in the Engineering department.',
+    schema:`employees (id, name, department, salary, hire_date)`,
+    setup:`CREATE TABLE employees (id INTEGER PRIMARY KEY, name TEXT, department TEXT, salary INTEGER, hire_date TEXT);
+INSERT INTO employees VALUES (1,'Alice Wong','Engineering',90000,'2020-01-15'),(2,'Bob Smith','Marketing',65000,'2019-03-10'),(3,'Anna Lee','Engineering',85000,'2021-07-01'),(4,'Charlie Kim','HR',70000,'2018-11-20'),(5,'Amy Johnson','Marketing',72000,'2022-02-28');`,
+    solution:`SELECT * FROM employees WHERE department != 'Engineering';`,
+  },
+  {
+    id:'e4', rank:'E', rankIdx:0, name:'Hire Year', xp:50, time:360,
+    desc:'Show only employees hired in 2020 or later, ordered by hire date ascending.',
+    schema:`employees (id, name, department, salary, hire_date)`,
+    setup:`CREATE TABLE employees (id INTEGER PRIMARY KEY, name TEXT, department TEXT, salary INTEGER, hire_date TEXT);
+INSERT INTO employees VALUES (1,'Alice Wong','Engineering',90000,'2020-01-15'),(2,'Bob Smith','Marketing',65000,'2019-03-10'),(3,'Anna Lee','Engineering',85000,'2021-07-01'),(4,'Charlie Kim','HR',70000,'2018-11-20'),(5,'Amy Johnson','Marketing',72000,'2022-02-28');`,
+    solution:`SELECT * FROM employees WHERE hire_date >= '2020-01-01' ORDER BY hire_date ASC;`,
+  },
+  // D-RANK
+  {
+    id:'d1', rank:'D', rankIdx:1, name:'Guild Orders', xp:70, time:420,
+    desc:'Map customers to their orders. Find all customers who have placed at least one order, showing customer name and order total.',
+    schema:`customers (id, name, email)\norders (id, customer_id, total, status)`,
+    setup:`CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT, email TEXT);
+CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER, total REAL, status TEXT);
+INSERT INTO customers VALUES (1,'Sung Jin-Woo','sjw@hunters.kr'),(2,'Cha Hae-In','chai@hunters.kr'),(3,'Go Gun-Hee','ggh@guild.kr');
+INSERT INTO orders VALUES (1,1,250.00,'completed'),(2,1,180.50,'pending'),(3,2,99.99,'completed');`,
+    solution:`SELECT c.name, o.total FROM customers c JOIN orders o ON c.id = o.customer_id;`,
+  },
+  {
+    id:'d2', rank:'D', rankIdx:1, name:'Left Behind', xp:70, time:420,
+    desc:'Find all customers, including those who have never placed an order. Show customer name and order total (NULL if no orders).',
+    schema:`customers (id, name, email)\norders (id, customer_id, total, status)`,
+    setup:`CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT, email TEXT);
+CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER, total REAL, status TEXT);
+INSERT INTO customers VALUES (1,'Sung Jin-Woo','sjw@hunters.kr'),(2,'Cha Hae-In','chai@hunters.kr'),(3,'Go Gun-Hee','ggh@guild.kr');
+INSERT INTO orders VALUES (1,1,250.00,'completed'),(2,1,180.50,'pending'),(3,2,99.99,'completed');`,
+    solution:`SELECT c.name, o.total FROM customers c LEFT JOIN orders o ON c.id = o.customer_id;`,
+  },
+  // C-RANK
+  {
+    id:'c1', rank:'C', rankIdx:2, name:'Department Census', xp:90, time:480,
+    desc:'Count how many employees exist in each department. Show department and count, ordered by count descending.',
+    schema:`employees (id, name, department, salary, hire_date)`,
+    setup:`CREATE TABLE employees (id INTEGER PRIMARY KEY, name TEXT, department TEXT, salary INTEGER, hire_date TEXT);
+INSERT INTO employees VALUES (1,'Alice Wong','Engineering',90000,'2020-01-15'),(2,'Bob Smith','Marketing',65000,'2019-03-10'),(3,'Anna Lee','Engineering',85000,'2021-07-01'),(4,'Charlie Kim','HR',70000,'2018-11-20'),(5,'Amy Johnson','Marketing',72000,'2022-02-28');`,
+    solution:`SELECT department, COUNT(*) as count FROM employees GROUP BY department ORDER BY count DESC;`,
+  },
+  {
+    id:'c2', rank:'C', rankIdx:2, name:'High-Value Depts', xp:100, time:480,
+    desc:'Find departments whose average salary exceeds 75,000. Show department and avg_salary.',
+    schema:`employees (id, name, department, salary, hire_date)`,
+    setup:`CREATE TABLE employees (id INTEGER PRIMARY KEY, name TEXT, department TEXT, salary INTEGER, hire_date TEXT);
+INSERT INTO employees VALUES (1,'Alice Wong','Engineering',90000,'2020-01-15'),(2,'Bob Smith','Marketing',65000,'2019-03-10'),(3,'Anna Lee','Engineering',85000,'2021-07-01'),(4,'Charlie Kim','HR',70000,'2018-11-20'),(5,'Amy Johnson','Marketing',72000,'2022-02-28');`,
+    solution:`SELECT department, AVG(salary) as avg_salary FROM employees GROUP BY department HAVING AVG(salary) > 75000;`,
+  },
+  // B-RANK
+  {
+    id:'b1', rank:'B', rankIdx:3, name:'Above Average', xp:120, time:540,
+    desc:'Find all employees whose salary is above the company-wide average. Use a subquery.',
+    schema:`employees (id, name, department, salary, hire_date)`,
+    setup:`CREATE TABLE employees (id INTEGER PRIMARY KEY, name TEXT, department TEXT, salary INTEGER, hire_date TEXT);
+INSERT INTO employees VALUES (1,'Alice Wong','Engineering',90000,'2020-01-15'),(2,'Bob Smith','Marketing',65000,'2019-03-10'),(3,'Anna Lee','Engineering',85000,'2021-07-01'),(4,'Charlie Kim','HR',70000,'2018-11-20'),(5,'Amy Johnson','Marketing',72000,'2022-02-28');`,
+    solution:`SELECT * FROM employees WHERE salary > (SELECT AVG(salary) FROM employees);`,
+  },
+  // A-RANK
+  {
+    id:'a1', rank:'A', rankIdx:4, name:'Salary Rank', xp:150, time:540,
+    desc:'Rank employees by salary within each department using a window function. Show name, department, salary, and their rank within department.',
+    schema:`employees (id, name, department, salary, hire_date)`,
+    setup:`CREATE TABLE employees (id INTEGER PRIMARY KEY, name TEXT, department TEXT, salary INTEGER, hire_date TEXT);
+INSERT INTO employees VALUES (1,'Alice Wong','Engineering',90000,'2020-01-15'),(2,'Bob Smith','Marketing',65000,'2019-03-10'),(3,'Anna Lee','Engineering',85000,'2021-07-01'),(4,'Charlie Kim','HR',70000,'2018-11-20'),(5,'Amy Johnson','Marketing',72000,'2022-02-28');`,
+    solution:`SELECT name, department, salary, RANK() OVER (PARTITION BY department ORDER BY salary DESC) as dept_rank FROM employees;`,
+  },
+  // S-RANK
+  {
+    id:'s1', rank:'S', rankIdx:5, name:'CTE Chain', xp:200, time:600,
+    desc:'Using a CTE, first calculate average salary per department, then find all employees earning more than their own department average. Show name, department, salary, and dept_avg.',
+    schema:`employees (id, name, department, salary, hire_date)`,
+    setup:`CREATE TABLE employees (id INTEGER PRIMARY KEY, name TEXT, department TEXT, salary INTEGER, hire_date TEXT);
+INSERT INTO employees VALUES (1,'Alice Wong','Engineering',90000,'2020-01-15'),(2,'Bob Smith','Marketing',65000,'2019-03-10'),(3,'Anna Lee','Engineering',85000,'2021-07-01'),(4,'Charlie Kim','HR',70000,'2018-11-20'),(5,'Amy Johnson','Marketing',72000,'2022-02-28');`,
+    solution:`WITH dept_avg AS (SELECT department, AVG(salary) as avg_sal FROM employees GROUP BY department) SELECT e.name, e.department, e.salary, d.avg_sal as dept_avg FROM employees e JOIN dept_avg d ON e.department = d.department WHERE e.salary > d.avg_sal;`,
+  },
+];
+
+// ═══════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════
+const DEFAULT_STATE = {
+  xp: 0,
+  totalXp: 0,
+  level: 1,
+  rankIdx: 0,
+  streak: 0,
+  gateKeys: 0,
+  firstSeen: new Date().toDateString(),
+  lastActive: new Date().toDateString(),
+  completedToday: [],
+  completedAll: [],
+  shadows: [],
+  inventory: { weapon:false, armor:false, acc:false, bag:true },
+  dailyQuestIds: [],
+  dailyDate: '',
+};
+
+let state = loadState();
+let db = null;
+let activeQuestId = null;
+let modalTimerInterval = null;
+let modalTimerStart = null;
+let modalTimerMax = 0;
+let isGateMode = false;
+
+// ═══════════════════════════════════════════════════════════
+// SUPABASE CONFIG — paste your values here after creating
+// your free project at supabase.com
+// ═══════════════════════════════════════════════════════════
+const SUPABASE_URL = 'https://zeotowpcewfllwbxyqcf.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_qnRfLDEATMB27FCi8Z0Gkw_KPxpH6Rz';
+
+const SUPABASE_ENABLED = SUPABASE_URL !== '' && SUPABASE_KEY !== '';
+
+// ── Supabase helpers ──────────────────────────────────────
+async function supabaseLoad() {
+  if (!SUPABASE_ENABLED) return null;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/hunter_state?id=eq.main&select=state`, {
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+      }
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data && data[0] ? data[0].state : null;
+  } catch { return null; }
+}
+
+async function supabaseSave(stateObj) {
+  if (!SUPABASE_ENABLED) return;
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/hunter_state?id=eq.main`, {
+      method: 'PATCH',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal',
+      },
+      body: JSON.stringify({ state: stateObj, updated_at: new Date().toISOString() })
+    });
+  } catch(e) { console.warn('Supabase save failed, localStorage still updated.', e); }
+}
+
+// ── State load/save (localStorage + Supabase) ─────────────
+function loadStateLocal() {
+  try {
+    const s = localStorage.getItem('sql_hunter_v2');
+    return s ? { ...DEFAULT_STATE, ...JSON.parse(s) } : { ...DEFAULT_STATE };
+  } catch { return { ...DEFAULT_STATE }; }
+}
+
+function loadState() {
+  return loadStateLocal(); // sync fallback; Supabase loaded async in boot
+}
+
+function saveState() {
+  localStorage.setItem('sql_hunter_v2', JSON.stringify(state));
+  supabaseSave(state); // fire-and-forget; failures are silent
+}
+
+// ── Sync indicator (tiny banner) ──────────────────────────
+function showSyncBanner(msg, color) {
+  let banner = document.getElementById('sync-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'sync-banner';
+    banner.style.cssText = `position:fixed;bottom:12px;left:50%;transform:translateX(-50%);
+      font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:1px;
+      padding:5px 14px;border:1px solid;border-radius:2px;z-index:9000;
+      transition:opacity 0.5s;pointer-events:none;`;
+    document.body.appendChild(banner);
+  }
+  banner.textContent = msg;
+  banner.style.color = color;
+  banner.style.borderColor = color;
+  banner.style.background = 'rgba(5,10,15,0.95)';
+  banner.style.opacity = '1';
+  setTimeout(() => { banner.style.opacity = '0'; }, 2500);
+}
+
+// ═══════════════════════════════════════════════════════════
+// SQL.JS INIT
+// ═══════════════════════════════════════════════════════════
+async function initDB() {
+  try {
+    const SQL = await initSqlJs({ locateFile: f => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/${f}` });
+    db = new SQL.Database();
+  } catch(e) {
+    console.error('sql.js failed:', e);
+  }
+}
+
+function runSetup(setupSQL) {
+  if (!db) return;
+  db.run('DROP TABLE IF EXISTS employees;');
+  db.run('DROP TABLE IF EXISTS customers;');
+  db.run('DROP TABLE IF EXISTS orders;');
+  db.run(setupSQL);
+}
+
+function runUserQuery(sql) {
+  if (!db) return { error: 'Database not initialized.' };
+  try {
+    const r = db.exec(sql);
+    if (!r || r.length === 0) return { columns: [], rows: [] };
+    return { columns: r[0].columns, rows: r[0].values };
+  } catch(e) { return { error: e.message }; }
+}
+
+function runSolutionQuery(sql) {
+  if (!db) return null;
+  try {
+    const r = db.exec(sql);
+    if (!r || r.length === 0) return { columns: [], rows: [] };
+    return { columns: r[0].columns, rows: r[0].values };
+  } catch { return null; }
+}
+
+function resultsMatch(a, b) {
+  if (!a || !b) return false;
+  if (a.rows.length !== b.rows.length) return false;
+  const aStr = JSON.stringify(a.rows.map(r => r.map(String).join('|')).sort());
+  const bStr = JSON.stringify(b.rows.map(r => r.map(String).join('|')).sort());
+  return aStr === bStr;
+}
+
+// ═══════════════════════════════════════════════════════════
+// DAILY QUEST SELECTION
+// ═══════════════════════════════════════════════════════════
+function selectDailyQuests() {
+  const today = new Date().toDateString();
+  if (state.dailyDate === today && state.dailyQuestIds.length === 3) return;
+
+  state.dailyDate = today;
+  state.completedToday = [];
+
+  // Update streak
+  const yesterday = new Date(Date.now() - 86400000).toDateString();
+  if (state.lastActive !== today) {
+    if (state.lastActive !== yesterday) state.streak = 0;
+    state.lastActive = today;
+  }
+
+  // Days in system
+  const first = new Date(state.firstSeen);
+  const now = new Date();
+  const days = Math.floor((now - first) / 86400000) + 1;
+
+  // Available ranks
+  const availableRanks = RANKS.slice(0, state.rankIdx + 1);
+  const pool = QUESTS.filter(q => availableRanks.includes(q.rank) && !state.completedAll.includes(q.id));
+  const allPool = pool.length >= 3 ? pool : QUESTS.filter(q => availableRanks.includes(q.rank));
+
+  // Deterministic selection by date seed
+  const seed = today.split('').reduce((a,c) => a + c.charCodeAt(0), 0);
+  const selected = [];
+  const used = new Set();
+  let i = 0;
+  while (selected.length < 3 && i < 1000) {
+    const idx = (seed + i * 37) % allPool.length;
+    if (!used.has(idx)) { used.add(idx); selected.push(allPool[idx].id); }
+    i++;
+  }
+  state.dailyQuestIds = selected;
+  saveState();
+}
+
+// ═══════════════════════════════════════════════════════════
+// RENDER
+// ═══════════════════════════════════════════════════════════
+function render() {
+  selectDailyQuests();
+  renderStatus();
+  renderSkills();
+  renderQuestList();
+  renderInventory();
+  renderDungeons();
+  renderShadows();
+}
+
+function renderStatus() {
+  const rank = RANKS[state.rankIdx];
+  document.getElementById('rank-letter').textContent = rank;
+  document.getElementById('rank-name-display').textContent = `${rank} — ${RANK_NAMES[rank]}`;
+  document.getElementById('level-display').textContent = state.level;
+  document.getElementById('xp-display').textContent = state.xp;
+  document.getElementById('streak-display').textContent = state.streak + 'd';
+  document.getElementById('keys-display').textContent = state.gateKeys;
+
+  // Days in system
+  const days = Math.floor((new Date() - new Date(state.firstSeen)) / 86400000) + 1;
+  document.getElementById('days-display').textContent = days;
+
+  // XP blocks (10 per level = 180xp)
+  const blocks = document.getElementById('xp-blocks');
+  blocks.innerHTML = '';
+  for (let i = 0; i < 10; i++) {
+    const b = document.createElement('div');
+    b.className = 'xp-block' + (state.xp >= (i + 1) * 18 ? ' filled' : '');
+    blocks.appendChild(b);
+  }
+
+  // Gate button
+  const gateBtn = document.getElementById('gate-btn');
+  gateBtn.disabled = state.gateKeys < 1;
+}
+
+function renderSkills() {
+  const grid = document.getElementById('skills-grid');
+  grid.innerHTML = '';
+  SKILLS.forEach(sk => {
+    const unlocked = state.rankIdx >= sk.minRank;
+    const card = document.createElement('div');
+    card.className = 'skill-card ' + (unlocked ? 'unlocked' : 'locked');
+    card.innerHTML = `<div class="skill-icon">${sk.icon}</div>
+      <div class="skill-name">${sk.name}</div>
+      <div class="skill-level ${unlocked ? '' : 'locked'}">Lv ${unlocked ? state.rankIdx - sk.minRank + 1 : 0}${unlocked ? '' : ' - Locked'}</div>`;
+    grid.appendChild(card);
+  });
+}
+
+function renderQuestList() {
+  const list = document.getElementById('quest-list');
+  list.innerHTML = '';
+  state.dailyQuestIds.forEach(id => {
+    const q = QUESTS.find(x => x.id === id);
+    if (!q) return;
+    const done = state.completedToday.includes(id);
+    const div = document.createElement('div');
+    div.className = `quest-item${done ? ' completed' : ''}${activeQuestId === id ? ' active' : ''}`;
+    div.onclick = () => !done && openQuest(id);
+    div.innerHTML = `
+      <div class="quest-header">
+        <div class="quest-check${done ? ' done' : ''}">✓</div>
+        <span class="quest-name">${q.name}</span>
+        <span class="quest-rank">${q.rank}</span>
+      </div>
+      <div class="quest-meta">
+        <span class="quest-xp">[+${q.xp} XP – ${Math.floor(q.time/60)} min]</span>
+        <span class="quest-timer">${done ? '✓ CLEARED' : '—'}</span>
+      </div>`;
+    list.appendChild(div);
+  });
+
+  const allDone = state.dailyQuestIds.every(id => state.completedToday.includes(id));
+  document.getElementById('streak-warn').style.display = allDone ? 'none' : 'block';
+}
+
+function renderInventory() {
+  const grid = document.getElementById('inv-grid');
+  grid.innerHTML = '';
+  const filled = INVENTORY_SLOTS.filter(s => s.id === 'weapon' || s.id === 'bag' || state.streak >= s.minStreak);
+  INVENTORY_SLOTS.forEach(slot => {
+    const have = state.inventory[slot.id] || slot.id === 'weapon' || (slot.id === 'bag');
+    const div = document.createElement('div');
+    div.className = `inv-slot${have ? ' filled' : ''}`;
+    div.innerHTML = `<div class="inv-icon">${have ? slot.icon : '🔒'}</div><div class="inv-label">${slot.label}</div>`;
+    grid.appendChild(div);
+  });
+}
+
+function renderDungeons() {
+  const container = document.getElementById('dungeon-nodes');
+  container.innerHTML = '';
+  const days = Math.floor((new Date() - new Date(state.firstSeen)) / 86400000) + 1;
+  DUNGEONS.forEach((d, i) => {
+    const rankIdx = i;
+    const daysOk = days >= RANK_DAY_GATES[d.rank];
+    const xpOk = state.totalXp >= RANK_XP_GATES[d.rank];
+    const unlocked = daysOk && xpOk;
+    const active = rankIdx === state.rankIdx;
+    const completed = rankIdx < state.rankIdx;
+
+    const node = document.createElement('div');
+    node.className = 'dungeon-node';
+    node.innerHTML = `
+      <div class="node-circle${active ? ' active' : completed ? ' completed' : ' locked'}">
+        ${d.icon}
+        ${(!unlocked && !active && !completed) ? '<div class="lock-icon">🔒</div>' : ''}
+      </div>
+      <div class="node-info">
+        <div class="node-rank">${d.rank}-rank</div>
+        <div class="node-name">${d.name}</div>
+        <div class="node-status">${active ? 'in progress' : completed ? 'cleared' : `${daysOk ? '' : `${RANK_DAY_GATES[d.rank]}d needed`}`}</div>
+        ${!unlocked && !completed ? `<div class="node-loot">${d.loot.map(l=>`<span class="loot-icon">${l}</span>`).join('')}</div>` : ''}
+      </div>`;
+    container.appendChild(node);
+  });
+}
+
+function renderShadows() {
+  const list = document.getElementById('shadow-list');
+  const empty = document.getElementById('shadow-empty');
+  const count = document.getElementById('shadow-count');
+  count.textContent = state.shadows.length;
+  document.getElementById('extract-btn').disabled = state.gateKeys < 1;
+
+  if (state.shadows.length === 0) {
+    empty.style.display = 'block';
+    list.querySelectorAll('.shadow-card').forEach(c => c.remove());
+    return;
+  }
+  empty.style.display = 'none';
+  list.querySelectorAll('.shadow-card').forEach(c => c.remove());
+  state.shadows.slice(-5).reverse().forEach(sh => {
+    const div = document.createElement('div');
+    div.className = 'shadow-card';
+    div.innerHTML = `
+      <div class="shadow-silhouette">${sh.icon}</div>
+      <div class="shadow-info">
+        <div class="shadow-name">${sh.name}</div>
+        <div class="shadow-rarity rarity-${sh.rarity}">[Lv ${sh.level} - ${sh.rarity}]</div>
+      </div>`;
+    list.insertBefore(div, list.firstChild);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// QUEST LOGIC
+// ═══════════════════════════════════════════════════════════
+function openQuest(id, gateMode = false) {
+  const q = QUESTS.find(x => x.id === id);
+  if (!q) return;
+  activeQuestId = id;
+  isGateMode = gateMode;
+  const timeMult = gateMode ? 0.7 : 1;
+  const timeLimit = Math.floor(q.time * timeMult);
+
+  document.getElementById('modal-title').textContent = `QUEST: ${q.name} [${q.rank}-RANK${gateMode ? ' — GATE' : ''}]`;
+  document.getElementById('modal-desc').textContent = q.desc;
+  document.getElementById('modal-schema').textContent = q.schema;
+  document.getElementById('sql-input').value = '';
+  document.getElementById('result-area').innerHTML = '';
+  document.getElementById('quest-modal').classList.add('open');
+
+  runSetup(q.setup);
+  startModalTimer(timeLimit, q);
+}
+
+function startModalTimer(seconds, quest) {
+  clearInterval(modalTimerInterval);
+  modalTimerStart = Date.now();
+  modalTimerMax = seconds;
+  const display = document.getElementById('modal-timer-display');
+
+  function tick() {
+    const elapsed = Math.floor((Date.now() - modalTimerStart) / 1000);
+    const remaining = Math.max(0, seconds - elapsed);
+    const m = Math.floor(remaining / 60);
+    const s = remaining % 60;
+    display.textContent = `${m}:${s.toString().padStart(2,'0')}`;
+    display.className = 'modal-timer' + (remaining < 30 ? ' warning' : '');
+  }
+  tick();
+  modalTimerInterval = setInterval(tick, 500);
+}
+
+function closeModal() {
+  document.getElementById('quest-modal').classList.remove('open');
+  clearInterval(modalTimerInterval);
+  activeQuestId = null;
+  isGateMode = false;
+  renderQuestList();
+}
+
+function runQuery() {
+  if (!activeQuestId) return;
+  const q = QUESTS.find(x => x.id === activeQuestId);
+  const sql = document.getElementById('sql-input').value.trim();
+  if (!sql) return;
+
+  runSetup(q.setup);
+  const userResult = runUserQuery(sql);
+  const area = document.getElementById('result-area');
+
+  if (userResult.error) {
+    area.innerHTML = `<div class="result-box result-error">
+      <div class="result-header" style="color:var(--red)">[ ERROR ]</div>
+      <div class="result-msg" style="color:var(--red);font-family:'Share Tech Mono',monospace;font-size:11px;">${userResult.error}</div>
+    </div>`;
+    return;
+  }
+
+  runSetup(q.setup);
+  const solResult = runSolutionQuery(q.solution);
+  const correct = resultsMatch(userResult, solResult);
+
+  if (correct) {
+    // Calculate XP
+    const elapsed = Math.floor((Date.now() - modalTimerStart) / 1000);
+    let xpGain = q.xp;
+    if (elapsed > modalTimerMax) xpGain = Math.floor(xpGain * 0.5);
+    if (isGateMode) xpGain = Math.floor(xpGain * 1.5);
+    const timely = elapsed <= modalTimerMax;
+
+    area.innerHTML = `<div class="result-box result-success">
+      <div class="result-header" style="color:var(--green)">[ QUERY CLEARED — +${xpGain} XP${timely ? '' : ' (half — timed out)'}${isGateMode ? ' (GATE BONUS)' : ''} ]</div>
+      ${renderTable(userResult)}
+    </div>`;
+
+    setTimeout(() => {
+      grantXP(xpGain, q, isGateMode);
+    }, 600);
+  } else {
+    area.innerHTML = `<div class="result-box result-error">
+      <div class="result-header" style="color:var(--red)">[ RESULT MISMATCH — CHECK YOUR QUERY ]</div>
+      ${renderTable(userResult)}
+    </div>`;
+  }
+}
+
+function renderTable(result) {
+  if (!result.columns || result.columns.length === 0) return '<div class="result-msg" style="color:var(--text-dim);">(no rows returned)</div>';
+  let html = '<div style="overflow-x:auto;"><table class="result-table"><thead><tr>';
+  result.columns.forEach(c => { html += `<th>${c}</th>`; });
+  html += '</tr></thead><tbody>';
+  result.rows.forEach(row => {
+    html += '<tr>';
+    row.forEach(v => { html += `<td>${v == null ? 'NULL' : v}</td>`; });
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+  return html;
+}
+
+function grantXP(amount, quest, gateMode) {
+  clearInterval(modalTimerInterval);
+  state.xp += amount;
+  state.totalXp += amount;
+
+  // Level up
+  const oldLevel = state.level;
+  state.level = Math.floor(state.totalXp / 180) + 1;
+
+  // Mark completed
+  if (!gateMode && !state.completedToday.includes(quest.id)) {
+    state.completedToday.push(quest.id);
+    if (!state.completedAll.includes(quest.id)) state.completedAll.push(quest.id);
+  }
+
+  // All 3 done → key
+  const allDone = state.dailyQuestIds.every(id => state.completedToday.includes(id));
+  if (allDone && !state.gateKeyAwardedToday) {
+    state.gateKeys++;
+    state.gateKeyAwardedToday = true;
+    state.streak++;
+    showToast(`+1 GATE KEY AWARDED — STREAK: ${state.streak}d`);
+  }
+
+  // Shadow extraction chance
+  const rollChance = gateMode ? 0.6 : 0.3;
+  if (Math.random() < rollChance) {
+    extractRandomShadow(quest.rankIdx);
+  }
+
+  // Check rank up
+  checkRankUp();
+
+  // XP normalize
+  state.xp = state.xp % 180;
+
+  saveState();
+
+  showToast(`+${amount} XP ACQUIRED`);
+  setTimeout(() => closeModal(), 1200);
+  render();
+}
+
+function checkRankUp() {
+  const days = Math.floor((new Date() - new Date(state.firstSeen)) / 86400000) + 1;
+  const nextRankIdx = state.rankIdx + 1;
+  if (nextRankIdx >= RANKS.length) return;
+  const nextRank = RANKS[nextRankIdx];
+  if (state.totalXp >= RANK_XP_GATES[nextRank] && days >= RANK_DAY_GATES[nextRank]) {
+    const oldRank = RANKS[state.rankIdx];
+    state.rankIdx = nextRankIdx;
+    const newRank = RANKS[state.rankIdx];
+    setTimeout(() => {
+      document.getElementById('rank-up-letter').textContent = newRank;
+      document.getElementById('rank-up-sub').textContent = `${RANK_NAMES[newRank]} — rank granted`;
+      document.getElementById('rank-up-overlay').classList.add('show');
+    }, 1500);
+  }
+}
+
+function extractRandomShadow(rankIdx) {
+  const eligible = SHADOW_POOL.filter(s => s.rankIdx <= rankIdx);
+  if (!eligible.length) return;
+  const shadow = eligible[Math.floor(Math.random() * eligible.length)];
+  state.shadows.push({ ...shadow, level: Math.floor(Math.random() * 5) + 1 });
+}
+
+function extractSoul() {
+  if (state.gateKeys < 1 || state.shadows.length === 0) return;
+  state.gateKeys--;
+  // Upgrade a random shadow
+  const idx = Math.floor(Math.random() * state.shadows.length);
+  state.shadows[idx].level = Math.min(10, state.shadows[idx].level + 1);
+  showToast(`SOUL EXTRACTED — ${state.shadows[idx].name} leveled up!`);
+  saveState();
+  render();
+}
+
+function openGate() {
+  if (state.gateKeys < 1) return;
+  state.gateKeys--;
+  // Pick random quest from any rank at or below current + 1
+  const maxRankIdx = Math.min(state.rankIdx + 1, RANKS.length - 1);
+  const pool = QUESTS.filter(q => q.rankIdx <= maxRankIdx);
+  const q = pool[Math.floor(Math.random() * pool.length)];
+  saveState();
+  render();
+  setTimeout(() => openQuest(q.id, true), 100);
+}
+
+function showToast(msg) {
+  const t = document.getElementById('xp-toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+function confirmReset() {
+  if (confirm('[ SYSTEM WARNING ]\n\nThis will erase all progress — XP, rank, shadows, streaks.\n\nAre you sure?')) {
+    localStorage.removeItem('sql_hunter_v2');
+    state = { ...DEFAULT_STATE, firstSeen: new Date().toDateString(), lastActive: new Date().toDateString() };
+    saveState();
+    render();
+    showToast('PROGRESS RESET — STARTING FROM E-RANK');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// BOOT — loads local state first (instant), then merges
+// Supabase state if available (so page never waits on network)
+// ═══════════════════════════════════════════════════════════
+(async () => {
+  await initDB();
+
+  // 1. Show local state immediately (no flicker / blank screen)
+  render();
+
+  if (SUPABASE_ENABLED) {
+    showSyncBanner('[ SYNCING WITH SYSTEM... ]', '#00a8c0');
+    const remoteState = await supabaseLoad();
+
+    if (remoteState) {
+      // Merge: keep whichever has more totalXp (most progress)
+      const localXp  = state.totalXp || 0;
+      const remoteXp = remoteState.totalXp || 0;
+
+      if (remoteXp > localXp) {
+        // Remote is ahead — overwrite local
+        state = { ...DEFAULT_STATE, ...remoteState };
+        localStorage.setItem('sql_hunter_v2', JSON.stringify(state));
+        render();
+        showSyncBanner('[ PROGRESS LOADED FROM CLOUD ]', '#00ff88');
+      } else if (localXp > remoteXp) {
+        // Local is ahead — push to remote
+        await supabaseSave(state);
+        showSyncBanner('[ LOCAL PROGRESS SYNCED TO CLOUD ]', '#00ff88');
+      } else {
+        showSyncBanner('[ SYSTEM IN SYNC ]', '#00ff88');
+      }
+    } else {
+      // No remote record yet — push current local state
+      await supabaseSave(state);
+      showSyncBanner('[ FIRST SYNC — CLOUD RECORD CREATED ]', '#00ff88');
+    }
+  }
+})();
+</script>
+</body>
+</html>
