@@ -1461,6 +1461,22 @@ function renderTable(result) {
   return html;
 }
 
+  // ── Telegram instant alert ────────────────────────────
+const TG_BOT_TOKEN = '8827083825:AAFm-oEYwJ2QZJH_lj3oji1RIzVlo9Yiy0g';
+const TG_CHAT_ID   = '1970910811';
+
+async function sendTelegramAlert(msg) {
+  try {
+    await fetch(`https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: TG_CHAT_ID, text: msg })
+    });
+  } catch(e) {
+    console.warn('Telegram alert failed:', e);
+  }
+}
+
 function grantXP(amount, quest, gateMode) {
   clearInterval(modalTimerInterval);
   state.xp += amount;
@@ -1494,13 +1510,21 @@ function grantXP(amount, quest, gateMode) {
   // Check rank up
   checkRankUp();
 
-  // XP normalize
+// XP normalize
   state.xp = state.xp % 180;
 
   saveState();
 
-  showToast(`+${amount} XP ACQUIRED`);
-  setTimeout(() => closeModal(), 1200);
+  // ── Instant Telegram notification ──────────────────────
+  const allDoneNow = state.dailyQuestIds.every(id => state.completedToday.includes(id));
+  if (allDoneNow) {
+    sendTelegramAlert('✅ ALL DAILY QUESTS CLEARED — Streak protected, Hunter. Well done.');
+  } else {
+    const remaining = state.dailyQuestIds.filter(id => !state.completedToday.includes(id)).length;
+    sendTelegramAlert(`⚔️ Quest cleared! ${remaining} quest${remaining > 1 ? 's' : ''} remaining today.`);
+  }
+
+  showToast(`+${amount} XP ACQUIRED`);  setTimeout(() => closeModal(), 1200);
   render();
 }
 
