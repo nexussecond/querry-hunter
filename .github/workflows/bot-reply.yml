@@ -1,0 +1,20 @@
+name: SQL Hunter Bot Reply
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'   # runs every 10 minutes
+  workflow_dispatch:           # also allows manual trigger
+
+jobs:
+  reply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reply to message
+        run: pip install requests && python bot_reply.py
+        env:
+          BOT_TOKEN:    ${{ secrets.BOT_TOKEN }}
+          CHAT_ID:      ${{ secrets.CHAT_ID }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          PAGES_URL:    https://nexussecond.github.io/querry-hunter/
