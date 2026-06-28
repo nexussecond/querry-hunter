@@ -656,9 +656,62 @@
   ::-webkit-scrollbar { width: 4px; height: 4px; }
   ::-webkit-scrollbar-track { background: var(--bg); }
   ::-webkit-scrollbar-thumb { background: var(--cyan-dim); border-radius: 2px; }
+
+  /* === NEW: Auth gate popup styling === */
+.auth-gate {
+    position: fixed; inset: 0; z-index: 99999;
+    background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 18px;
+}
+.auth-gate.hidden { display: none; }
+.auth-box {
+    width: min(360px, 90vw);
+    background: var(--panel);
+    border: 1px solid var(--border-strong);
+    padding: 28px 24px;
+    text-align: center;
+    box-shadow: 0 0 40px rgba(0,229,255,0.15);
+}
+.auth-box .sys-tag { font-family:'Orbitron',sans-serif; font-size:11px; color:var(--cyan); letter-spacing:4px; text-shadow:0 0 12px var(--cyan); margin-bottom:14px; }
+.auth-box input {
+    width: 100%; background: rgba(0,229,255,0.05); border: 1px solid var(--border);
+    color: var(--text); font-family: 'Share Tech Mono', monospace; font-size: 14px;
+    padding: 10px; margin-bottom: 10px; outline: none;
+}
+.auth-box input:focus { border-color: var(--cyan); }
+.auth-box button {
+    width: 100%; background: linear-gradient(90deg, rgba(180,79,255,0.15), rgba(0,229,255,0.15));
+    border: 1px solid var(--cyan); color: var(--cyan); font-family:'Orbitron',sans-serif;
+    font-size: 12px; letter-spacing: 2px; padding: 10px; cursor: pointer; margin-top: 6px;
+}
+.auth-box button:hover { box-shadow: 0 0 20px rgba(0,229,255,0.3); }
+.auth-error { color: var(--red); font-size: 12px; min-height: 16px; margin-top: 4px; }
+.auth-hint { color: var(--text-dim); font-size: 11px; margin-top: 10px; }
 </style>
 </head>
 <body>
+<div id="app-content" style="display:none;">...</div>
+
+<!-- === NEW: Identity verification popup — shown first, blocks everything === -->
+<div class="auth-gate" id="auth-gate">
+  <div class="auth-box">
+    <div class="sys-tag">[ IDENTITY VERIFICATION REQUIRED ]</div>
+    <input type="text" id="auth-name" placeholder="HUNTER NAME" autocomplete="off">
+    <input type="password" id="auth-code" placeholder="ACCESS CODE" autocomplete="off">
+    <button onclick="attemptAuth()">[ ENTER THE SYSTEM ]</button>
+    <div class="auth-error" id="auth-error"></div>
+    <div class="auth-hint">Awakened hunters only.</div>
+  </div>
+</div>
+
+<!-- === NEW: wrapper that stays hidden until auth passes — put ALL your
+     existing body content (toasts, modals, sys-frame, etc.) inside this === -->
+<div class="app-content" id="app-content" style="display:none;">
+
+  <!-- ... all your existing content goes here ... -->
+
+</div><!-- /app-content -->
 
 <!-- ═══ TOASTS & OVERLAYS ═══ -->
 <div class="xp-toast" id="xp-toast"></div>
@@ -1070,18 +1123,21 @@ async function supabaseLoad() {
   } catch { return null; }
 }
 
+/* === FIX: PATCH on a non-existent row does nothing — that's why the
+   first save never created a cloud record and sync never worked.
+   Switched to an UPSERT so the row is created on first save. === */
 async function supabaseSave(stateObj) {
   if (!SUPABASE_ENABLED) return;
   try {
-    await fetch(`${SUPABASE_URL}/rest/v1/hunter_state?id=eq.main`, {
-      method: 'PATCH',
+    await fetch(`${SUPABASE_URL}/rest/v1/hunter_state?on_conflict=id`, {
+      method: 'POST',
       headers: {
         'apikey': SUPABASE_KEY,
         'Authorization': `Bearer ${SUPABASE_KEY}`,
         'Content-Type': 'application/json',
-        'Prefer': 'return=minimal',
+        'Prefer': 'resolution=merge-duplicates,return=minimal',
       },
-      body: JSON.stringify({ state: stateObj, updated_at: new Date().toISOString() })
+      body: JSON.stringify({ id: 'main', state: stateObj, updated_at: new Date().toISOString() })
     });
   } catch(e) { console.warn('Supabase save failed, localStorage still updated.', e); }
 }
@@ -1176,8 +1232,26 @@ function selectDailyQuests() {
   const today = new Date().toDateString();
   if (state.dailyDate === today && state.dailyQuestIds.length === 3) return;
 
+  /* === NEW: PENALTY for missed quests ===
+     If yesterday had assigned quests and not all 3 were cleared,
+     deduct XP per missed quest and reset the streak. */
+  if (state.dailyDate && state.dailyDate !== today && state.dailyQuestIds.length) {
+    const missed = state.dailyQuestIds.filter(id => !state.completedToday.includes(id));
+    if (missed.length > 0) {
+      const PENALTY_PER_QUEST = 25; // change this number to tune penalty severity
+      let penaltyXp = missed.length * PENALTY_PER_QUEST;
+      state.totalXp = Math.max(0, state.totalXp - penaltyXp);
+      state.xp = state.totalXp % 180;
+      state.level = Math.floor(state.totalXp / 180) + 1;
+      state.streak = 0;
+      state.pendingPenaltyMsg = `⚠ PENALTY APPLIED: ${missed.length} quest${missed.length>1?'s':''} missed — -${penaltyXp} XP, streak reset.`;
+      sendTelegramAlert(`☠️ Penalty applied: ${missed.length} quest(s) missed yesterday. -${penaltyXp} XP, streak reset.`);
+    }
+  }
+
   state.dailyDate = today;
   state.completedToday = [];
+  state.gateKeyAwardedToday = false; // also reset this here so gate-key logic stays correct day to day
 
   // Update streak
   const yesterday = new Date(Date.now() - 86400000).toDateString();
@@ -1215,6 +1289,12 @@ function selectDailyQuests() {
 // ═══════════════════════════════════════════════════════════
 function render() {
   selectDailyQuests();
+    /* === NEW: show the penalty toast once, right after it's applied === */
+  if (state.pendingPenaltyMsg) {
+    showToast(state.pendingPenaltyMsg);
+    state.pendingPenaltyMsg = null;
+    saveState();
+
   renderStatus();
   renderSkills();
   renderQuestList();
