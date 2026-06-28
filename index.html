@@ -45,6 +45,17 @@
       repeating-linear-gradient(90deg, transparent, transparent 40px, rgba(0,229,255,0.015) 40px, rgba(0,229,255,0.015) 41px);
   }
 
+  /* === NEW: Solo Leveling style glowing portal backdrop === */
+.gate-backdrop {
+    position: fixed; inset: 0; z-index: 0;
+    pointer-events: none;
+    opacity: 0.8;
+    animation: gate-pulse 6s ease-in-out infinite;
+}
+.gate-backdrop svg { width: 100%; height: 100%; }
+@keyframes gate-pulse { 0%,100% { opacity: 0.6; } 50% { opacity: 0.9; } }
+.sys-frame { z-index: 1; position: relative; } /* keep content above the backdrop */
+
   /* ═══ CORNER ORNAMENTS ═══ */
   .sys-frame {
     position: relative;
@@ -703,6 +714,23 @@
     <div class="auth-error" id="auth-error"></div>
     <div class="auth-hint">Awakened hunters only.</div>
   </div>
+</div>
+
+  <!-- === NEW: ambient glowing gate/portal visual === -->
+<div class="gate-backdrop" aria-hidden="true">
+  <svg viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <radialGradient id="gatePortal" cx="50%" cy="42%" r="55%">
+        <stop offset="0%" stop-color="#00e5ff" stop-opacity="0.35"/>
+        <stop offset="35%" stop-color="#00a8c0" stop-opacity="0.18"/>
+        <stop offset="70%" stop-color="#b44fff" stop-opacity="0.08"/>
+        <stop offset="100%" stop-color="#050a0f" stop-opacity="0"/>
+      </radialGradient>
+    </defs>
+    <ellipse cx="500" cy="420" rx="320" ry="430" fill="url(#gatePortal)"/>
+    <ellipse cx="500" cy="420" rx="300" ry="410" fill="none" stroke="#00e5ff" stroke-opacity="0.25" stroke-width="2"/>
+    <ellipse cx="500" cy="420" rx="270" ry="370" fill="none" stroke="#00e5ff" stroke-opacity="0.12" stroke-width="1"/>
+  </svg>
 </div>
 
 <!-- === NEW: wrapper that stays hidden until auth passes — put ALL your
@@ -1683,10 +1711,8 @@ function confirmReset() {
 // BOOT — loads local state first (instant), then merges
 // Supabase state if available (so page never waits on network)
 // ═══════════════════════════════════════════════════════════
-(async () => {
+async function bootApp() {
   await initDB();
-
-  // 1. Show local state immediately (no flicker / blank screen)
   render();
 
   if (SUPABASE_ENABLED) {
@@ -1718,6 +1744,41 @@ function confirmReset() {
     }
   }
 })();
+  /* === NEW: Auth gate logic ===
+   NOTE: client-side only — deters casual access, but anyone reading
+   the page source can see the code. Not real security. */
+const ACCESS_CODE = 'arise'; // change this to your own code
+
+function attemptAuth() {
+  const name = document.getElementById('auth-name').value.trim();
+  const code = document.getElementById('auth-code').value.trim();
+  const errEl = document.getElementById('auth-error');
+  if (!name) { errEl.textContent = 'Enter a hunter name.'; return; }
+  if (code.toLowerCase() !== ACCESS_CODE.toLowerCase()) {
+    errEl.textContent = '[ ACCESS DENIED ] Incorrect code.';
+    return;
+  }
+  localStorage.setItem('sql_hunter_identity', name);
+  unlockSystem();
+}
+
+function unlockSystem() {
+  document.getElementById('auth-gate').classList.add('hidden');
+  document.getElementById('app-content').style.display = '';
+  const identity = localStorage.getItem('sql_hunter_identity');
+  if (identity) {
+    document.querySelectorAll('#hunter-name-skills').forEach(el => el.textContent = `'${identity}'`);
+  }
+  bootApp();
+}
+
+document.getElementById('auth-name').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('auth-code').focus(); });
+document.getElementById('auth-code').addEventListener('keydown', e => { if (e.key === 'Enter') attemptAuth(); });
+
+// Skip the popup if this browser already verified before
+if (localStorage.getItem('sql_hunter_identity')) {
+  unlockSystem();
+}
 </script>
 </body>
 </html>
