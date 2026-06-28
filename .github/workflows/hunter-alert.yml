@@ -15,4 +15,4 @@ jobs:
           CHAT_ID: ${{ secrets.CHAT_ID }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-          PAGES_URL: https://YOUR_USERNAME.github.io/sql-hunter/
+          PAGES_URL: https://nexussecond.github.io/querry-hunter/
